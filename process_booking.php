@@ -17,7 +17,7 @@ try {
     $user_type = $_POST['user_type'];
     $mess_id = intval($_POST['mess_id']);
     $coupon_type = $_POST['coupon_type'];
-    $meal_type = $_POST['meal_type'] ?? null;
+    $meal_type = $_POST['meal_type'] ?? null; // This is the specific meal type (breakfast, lunch, dinner)
     $persons = intval($_POST['persons']);
     $total_amount = floatval($_POST['total_amount']);
     $booking_date = $_POST['booking_date'] ?? date('Y-m-d');
@@ -51,6 +51,14 @@ try {
         throw new Exception("Selected mess is not available");
     }
     $mess_info = $mess_result->fetch_assoc();
+
+    // --- NEW: Check meal availability based on staff settings ---
+    if ($coupon_type === 'single_meal' && $meal_type) {
+        if (!isMealTypeAvailableForMess($mess_id, $booking_date, $meal_type)) {
+            throw new Exception("Sorry, " . ucfirst($meal_type) . " is currently unavailable at " . $mess_info['name'] . " for today.");
+        }
+    }
+    // --- END NEW CHECK ---
 
     // Generate unique booking ID
     $booking_id = 'PU' . date('Ymd') . sprintf('%04d', rand(1000, 9999));

@@ -36,73 +36,9 @@ try {
     die("Database error: " . $e->getMessage());
 }
 
-// Get current date for capacity checking
-$current_date = date('Y-m-d');
-
-// Function to get mess available capacity
-function getMessAvailableCapacity($mess_id, $booking_date) {
-    $conn = getDBConnection();
-    
-    // Get mess capacity settings
-    $capacity_query = $conn->prepare("SELECT daily_capacity, capacity_enabled FROM mess WHERE id = ? AND status = 'active'");
-    $capacity_query->bind_param("i", $mess_id);
-    $capacity_query->execute();
-    $capacity_result = $capacity_query->get_result();
-    
-    if ($capacity_row = $capacity_result->fetch_assoc()) {
-        if (!$capacity_row['capacity_enabled']) {
-            return ['available' => 999, 'total' => 999, 'used' => 0]; // No limit
-        }
-        
-        $total_capacity = $capacity_row['daily_capacity'];
-        
-        // Get used capacity for the date
-        $used_query = $conn->prepare("SELECT COALESCE(SUM(persons), 0) as used_capacity FROM bookings WHERE mess_id = ? AND booking_date = ? AND booking_status IN ('active', 'completed')");
-        $used_query->bind_param("is", $mess_id, $booking_date);
-        $used_query->execute();
-        $used_result = $used_query->get_result();
-        $used_capacity = $used_result->fetch_assoc()['used_capacity'];
-        
-        return [
-            'available' => max(0, $total_capacity - $used_capacity),
-            'total' => $total_capacity,
-            'used' => $used_capacity
-        ];
-    }
-    
-    return ['available' => 0, 'total' => 0, 'used' => 0];
-}
-
-// Try to get mess data with capacity information
+// Try to get mess data
 try {
-    $mess_query = "
-        SELECT 
-            m.*,
-            CASE 
-                WHEN m.capacity_enabled = 1 THEN 
-                    GREATEST(0, m.daily_capacity - COALESCE((
-                        SELECT SUM(b.persons) 
-                        FROM bookings b 
-                        WHERE b.mess_id = m.id 
-                        AND b.booking_date = CURDATE() 
-                        AND b.booking_status IN ('active', 'completed')
-                    ), 0))
-                ELSE 999
-            END as available_capacity,
-            m.daily_capacity as total_capacity,
-            COALESCE((
-                SELECT SUM(b.persons) 
-                FROM bookings b 
-                WHERE b.mess_id = m.id 
-                AND b.booking_date = CURDATE() 
-                AND b.booking_status IN ('active', 'completed')
-            ), 0) as used_capacity
-        FROM mess m 
-        WHERE m.status = 'active'
-        ORDER BY m.name
-    ";
-    
-    $mess_list = $conn->query($mess_query);
+    $mess_list = $conn->query("SELECT * FROM mess WHERE status = 'active'");
     if (!$mess_list) {
         die("Query failed: " . $conn->error);
     }
@@ -110,46 +46,31 @@ try {
     die("Mess query error: " . $e->getMessage());
 }
 
-// Get current pricing from database (using the global variables from config.php)
-global $COUPON_PRICES, $TIME_SLOTS;
-
 // Helper functions
 function isTimeSlotAvailable($slot) {
-    global $TIME_SLOTS;
-    
     $currentHour = (int) date('H');
     $currentMinute = (int) date('i');
     $currentMinutes = $currentHour * 60 + $currentMinute;
     
-    // Determine the correct slot based on day
-    $current_day = date('w'); // 0 = Sunday, 1 = Monday, etc.
-    
-    if ($current_day == 0) { // Sunday
-        if ($slot == 'lunch_weekday') $slot = 'lunch_sunday';
-        if ($slot == 'dinner_weekday') $slot = 'dinner_sunday';
+    switch($slot) {
+        case 'breakfast':
+            return $currentMinutes >= 360 && $currentMinutes <= 450; // 6:00 AM to 7:30 AM
+        case 'lunch_weekday':
+            return !isSunday() && $currentMinutes >= 480 && $currentMinutes <= 810; // 8:00 AM to 1:30 PM
+        case 'lunch_sunday':
+            return isSunday() && $currentMinutes >= 480 && $currentMinutes <= 750; // 8:00 AM to 12:30 PM
+        case 'dinner_weekday':
+            return !isSunday() && $currentMinutes >= 840 && $currentMinutes <= 1200; // 2:00 PM to 8:00 PM
+        case 'dinner_sunday':
+            return isSunday() && $currentMinutes >= 840 && $currentMinutes <= 1200; // 2:00 PM to 8:00 PM
+        default:
+            return false;
     }
-    
-    if (!isset($TIME_SLOTS[$slot])) return false;
-    
-    // Convert time strings to minutes
-    $start_time = $TIME_SLOTS[$slot]['start'];
-    $end_time = $TIME_SLOTS[$slot]['end'];
-    
-    list($start_hour, $start_min) = explode(':', $start_time);
-    list($end_hour, $end_min) = explode(':', $end_time);
-    
-    $start_minutes = ($start_hour * 60) + $start_min;
-    $end_minutes = ($end_hour * 60) + $end_min;
-    
-    return $currentMinutes >= $start_minutes && $currentMinutes <= $end_minutes;
 }
 
 function isSunday() {
     return date('w') == 0;
 }
-
-// Get current date for special pricing
-$current_date = date('Y-m-d');
 
 // Include header safely
 safe_include('header/header.php');
@@ -212,12 +133,6 @@ safe_include('header/header.php');
             background: #e3f2fd;
             border-color: #2196f3;
         }
-        .form-check-input:disabled + .form-check-label {
-            background: #f8f9fa;
-            color: #6c757d;
-            cursor: not-allowed;
-            opacity: 0.6;
-        }
         .pricing-info {
             background: rgba(255, 255, 255, 0.1);
             padding: 20px;
@@ -231,21 +146,6 @@ safe_include('header/header.php');
         .pricing-info li {
             padding: 5px 0;
             border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        .capacity-info {
-            font-size: 0.85em;
-            margin-top: 5px;
-        }
-        .capacity-full {
-            color: #dc3545;
-            font-weight: bold;
-        }
-        .capacity-low {
-            color: #fd7e14;
-            font-weight: bold;
-        }
-        .capacity-good {
-            color: #198754;
         }
     </style>
 </head>
@@ -263,18 +163,17 @@ safe_include('header/header.php');
                         <li>Coupons can be booked only for the present day</li>
                         <li>Coupons are non-refundable and non-transferable</li>
                         <li>Post booking, download ticket and show it at the mess</li>
-                        <li><strong>Limited capacity available - book early!</strong></li>
                     </ul>
                 </div>
                 
                 <div class="pricing-info mt-4 text-white">
                     <h5>Pricing Information:</h5>
                     <ul>
-                        <li><strong>Breakfast:</strong> ₹<?php echo number_format(getEffectivePrice('breakfast', $current_date), 0); ?>/meal</li>
-                        <li><strong>Lunch:</strong> ₹<?php echo number_format(getEffectivePrice(isSunday() ? 'lunch_sunday' : 'lunch_weekday', $current_date), 0); ?>/meal <?php echo isSunday() ? '(Sunday)' : '(Weekday)'; ?></li>
-                        <li><strong>Dinner:</strong> ₹<?php echo number_format(getEffectivePrice(isSunday() ? 'dinner_sunday' : 'dinner_weekday', $current_date), 0); ?>/meal <?php echo isSunday() ? '(Sunday)' : '(Weekday)'; ?></li>
-                        <li><strong>Monthly (In Campus):</strong> ₹<?php echo number_format($COUPON_PRICES['in_campus_monthly'], 0); ?></li>
-                        <li><strong>Monthly (Out Campus):</strong> ₹<?php echo number_format($COUPON_PRICES['out_campus_monthly'], 0); ?></li>
+                        <li><strong>Breakfast:</strong> ₹30/meal</li>
+                        <li><strong>Lunch:</strong> ₹65/meal (₹80 on Sunday)</li>
+                        <li><strong>Dinner:</strong> ₹65/meal (₹50 on Sunday)</li>
+                        <li><strong>Monthly (In Campus):</strong> ₹3900</li>
+                        <li><strong>Monthly (Out Campus):</strong> ₹1690</li>
                     </ul>
                 </div>
             </div>
@@ -298,49 +197,17 @@ safe_include('header/header.php');
                                 <h3 class="mb-3">Choose a Mess</h3>
                                 <?php if ($mess_list && $mess_list->num_rows > 0): ?>
                                     <?php while($mess = $mess_list->fetch_assoc()): ?>
-                                    <?php 
-                                        $is_full = $mess['available_capacity'] <= 0 && $mess['total_capacity'] < 999;
-                                        $is_low = $mess['available_capacity'] <= 5 && $mess['available_capacity'] > 0 && $mess['total_capacity'] < 999;
-                                        $capacity_class = $is_full ? 'capacity-full' : ($is_low ? 'capacity-low' : 'capacity-good');
-                                    ?>
                                     <div class="form-check mb-3">
-                                        <input class="form-check-input" type="radio" name="mess_id" value="<?php echo $mess['id']; ?>" 
-                                               id="mess<?php echo $mess['id']; ?>" 
-                                               data-capacity="<?php echo $mess['available_capacity']; ?>"
-                                               <?php echo $is_full ? 'disabled' : ''; ?> required>
+                                        <input class="form-check-input" type="radio" name="mess_id" value="<?php echo $mess['id']; ?>" id="mess<?php echo $mess['id']; ?>" required>
                                         <label class="form-check-label" for="mess<?php echo $mess['id']; ?>">
-                                            <div class="d-flex justify-content-between align-items-start">
-                                                <strong><?php echo htmlspecialchars($mess['name']); ?></strong>
-                                                  <small class="text-muted">
-                                                        <?php echo htmlspecialchars($mess['location']); ?> | 
-                                                        <?php echo htmlspecialchars($mess['contact']); ?>
-                                                    </small>
-                                                
-                                            </div>
-                                        
+                                            <strong><?php echo htmlspecialchars($mess['name']); ?></strong><br>
+                                            <small class="text-muted">
+                                                <?php echo htmlspecialchars($mess['location']); ?> | 
+                                                <?php echo htmlspecialchars($mess['contact']); ?>
+                                            </small>
                                         </label>
                                     </div>
                                     <?php endwhile; ?>
-                                    
-                                    <?php 
-                                    // Check if all mess are full
-                                    $mess_list->data_seek(0);
-                                    $all_full = true;
-                                    while($mess = $mess_list->fetch_assoc()) {
-                                        if ($mess['available_capacity'] > 0 || $mess['total_capacity'] >= 999) {
-                                            $all_full = false;
-                                            break;
-                                        }
-                                    }
-                                    ?>
-                                    
-                                    <?php if ($all_full): ?>
-                                    <div class="alert alert-danger mt-3">
-                                        <i class="fas fa-exclamation-triangle"></i>
-                                        <strong>All mess are currently full!</strong> Please try again later or contact the administrator.
-                                    </div>
-                                    <?php endif; ?>
-                                    
                                 <?php else: ?>
                                     <div class="alert alert-warning">No active mess found. Please contact administrator.</div>
                                 <?php endif; ?>
@@ -387,14 +254,14 @@ safe_include('header/header.php');
                                     <div class="form-check mb-2">
                                         <input class="form-check-input" type="radio" name="coupon_type" value="in_campus_monthly" id="inCampusMonthly">
                                         <label class="form-check-label" for="inCampusMonthly">
-                                            Monthly (In Campus) - ₹<?php echo number_format($COUPON_PRICES['in_campus_monthly'], 0); ?>
+                                            Monthly (In Campus) - ₹3900
                                         </label>
                                     </div>
                                     
                                     <div class="form-check mb-3">
                                         <input class="form-check-input" type="radio" name="coupon_type" value="out_campus_monthly" id="outCampusMonthly">
                                         <label class="form-check-label" for="outCampusMonthly">
-                                            Monthly (Out Campus) - ₹<?php echo number_format($COUPON_PRICES['out_campus_monthly'], 0); ?>
+                                            Monthly (Out Campus) - ₹1690
                                         </label>
                                     </div>
 
@@ -403,48 +270,28 @@ safe_include('header/header.php');
                                     
                                     <!-- Breakfast -->
                                     <?php if (isTimeSlotAvailable('breakfast')): ?>
-                                    <?php $breakfast_price = getEffectivePrice('breakfast', $current_date); ?>
                                     <div class="form-check mb-2">
                                         <input class="form-check-input" type="radio" name="coupon_type" value="single_meal" data-meal="breakfast" id="breakfast">
-                                        <label class="form-check-label" for="breakfast">
-                                            Breakfast - ₹<?php echo number_format($breakfast_price, 0); ?>
-                                            <?php if ($breakfast_price != $COUPON_PRICES['breakfast']): ?>
-                                                <span class="badge bg-warning text-dark ms-1">Special Price</span>
-                                            <?php endif; ?>
-                                        </label>
+                                        <label class="form-check-label" for="breakfast">Breakfast - ₹30</label>
                                     </div>
                                     <?php endif; ?>
 
                                     <!-- Lunch -->
                                     <?php if (isTimeSlotAvailable('lunch_weekday') || isTimeSlotAvailable('lunch_sunday')): ?>
-                                    <?php 
-                                    $lunch_meal_type = isSunday() ? 'lunch_sunday' : 'lunch_weekday';
-                                    $lunch_price = getEffectivePrice($lunch_meal_type, $current_date);
-                                    ?>
                                     <div class="form-check mb-2">
                                         <input class="form-check-input" type="radio" name="coupon_type" value="single_meal" data-meal="lunch" id="lunch">
                                         <label class="form-check-label" for="lunch">
-                                            Lunch - ₹<?php echo number_format($lunch_price, 0); ?>
-                                            <?php if ($lunch_price != $COUPON_PRICES[$lunch_meal_type]): ?>
-                                                <span class="badge bg-warning text-dark ms-1">Special Price</span>
-                                            <?php endif; ?>
+                                            Lunch - ₹<?php echo isSunday() ? 80 : 65; ?>
                                         </label>
                                     </div>
                                     <?php endif; ?>
 
                                     <!-- Dinner -->
                                     <?php if (isTimeSlotAvailable('dinner_weekday') || isTimeSlotAvailable('dinner_sunday')): ?>
-                                    <?php 
-                                    $dinner_meal_type = isSunday() ? 'dinner_sunday' : 'dinner_weekday';
-                                    $dinner_price = getEffectivePrice($dinner_meal_type, $current_date);
-                                    ?>
                                     <div class="form-check mb-2">
                                         <input class="form-check-input" type="radio" name="coupon_type" value="single_meal" data-meal="dinner" id="dinner">
                                         <label class="form-check-label" for="dinner">
-                                            Dinner - ₹<?php echo number_format($dinner_price, 0); ?>
-                                            <?php if ($dinner_price != $COUPON_PRICES[$dinner_meal_type]): ?>
-                                                <span class="badge bg-warning text-dark ms-1">Special Price</span>
-                                            <?php endif; ?>
+                                            Dinner - ₹<?php echo isSunday() ? 50 : 65; ?>
                                         </label>
                                     </div>
                                     <?php endif; ?>
@@ -454,14 +301,10 @@ safe_include('header/header.php');
                                 <div class="mb-3">
                                     <label for="persons" class="form-label"><strong>Number of Persons:</strong></label>
                                     <select name="persons" id="persons" class="form-select" required>
-                                        <?php for($i = 1; $i <= $capacity_query; $i++): ?>
+                                        <?php for($i = 1; $i <= 10; $i++): ?>
                                             <option value="<?php echo $i; ?>"><?php echo $i; ?> Person<?php echo $i > 1 ? 's' : ''; ?></option>
                                         <?php endfor; ?>
                                     </select>
-                                    <div class="form-text" id="capacityWarning" style="display: none;">
-                                        <i class="fas fa-exclamation-triangle text-warning"></i>
-                                        <span id="capacityMessage"></span>
-                                    </div>
                                 </div>
 
                                 <input type="hidden" name="meal_type" id="mealType" value="">
@@ -529,81 +372,6 @@ safe_include('header/header.php');
 <script>
 let currentStep = 1;
 const totalSteps = 4;
-let selectedMessCapacity = 0;
-
-// Dynamic pricing data from PHP
-const pricingData = {
-    in_campus_monthly: <?php echo $COUPON_PRICES['in_campus_monthly']; ?>,
-    out_campus_monthly: <?php echo $COUPON_PRICES['out_campus_monthly']; ?>,
-    breakfast: <?php echo getEffectivePrice('breakfast', $current_date); ?>,
-    lunch: <?php echo getEffectivePrice(isSunday() ? 'lunch_sunday' : 'lunch_weekday', $current_date); ?>,
-    dinner: <?php echo getEffectivePrice(isSunday() ? 'dinner_sunday' : 'dinner_weekday', $current_date); ?>
-};
-
-const isSunday = <?php echo isSunday() ? 'true' : 'false'; ?>;
-
-// Track selected mess capacity
-document.addEventListener('DOMContentLoaded', function() {
-    const messRadios = document.querySelectorAll('input[name="mess_id"]');
-    messRadios.forEach(radio => {
-        radio.addEventListener('change', function() {
-            selectedMessCapacity = parseInt(this.dataset.capacity);
-            updatePersonsDropdown();
-        });
-    });
-    
-    // Update capacity warning when persons selection changes
-    document.getElementById('persons').addEventListener('change', updateCapacityWarning);
-});
-
-function updatePersonsDropdown() {
-    const personsSelect = document.getElementById('persons');
-    const currentValue = personsSelect.value;
-    
-    // Clear existing options
-    personsSelect.innerHTML = '';
-    
-    // Add options based on available capacity
-    const maxPersons = Math.min(10, selectedMessCapacity);
-    
-    for (let i = 1; i <= maxPersons; i++) {
-        const option = document.createElement('option');
-        option.value = i;
-        option.textContent = i + ' Person' + (i > 1 ? 's' : '');
-        personsSelect.appendChild(option);
-    }
-    
-    // Restore previous value if still valid
-    if (currentValue && currentValue <= maxPersons) {
-        personsSelect.value = currentValue;
-    }
-    
-    updateCapacityWarning();
-}
-
-function updateCapacityWarning() {
-    const personsSelect = document.getElementById('persons');
-    const capacityWarning = document.getElementById('capacityWarning');
-    const capacityMessage = document.getElementById('capacityMessage');
-    
-    const selectedPersons = parseInt(personsSelect.value);
-    
-    if (selectedMessCapacity < 999) { // Only show warning if capacity is limited
-        if (selectedPersons > selectedMessCapacity) {
-            capacityWarning.style.display = 'block';
-            capacityMessage.textContent = `Only ${selectedMessCapacity} spots available. Please select a different mess or reduce number of persons.`;
-            capacityMessage.className = 'text-danger';
-        } else if (selectedPersons > selectedMessCapacity * 0.8) {
-            capacityWarning.style.display = 'block';
-            capacityMessage.textContent = `Limited availability! Only ${selectedMessCapacity} spots remaining.`;
-            capacityMessage.className = 'text-warning';
-        } else {
-            capacityWarning.style.display = 'none';
-        }
-    } else {
-        capacityWarning.style.display = 'none';
-    }
-}
 
 function showStep(step) {
     document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
@@ -656,16 +424,6 @@ function validateCurrentStep() {
             return false;
         }
     }
-    
-    // Additional validation for capacity
-    if (currentStep === 2) {
-        const selectedPersons = parseInt(document.getElementById('persons').value);
-        if (selectedPersons > selectedMessCapacity && selectedMessCapacity < 999) {
-            alert(`Sorry, only ${selectedMessCapacity} spots are available. Please select a different mess or reduce the number of persons.`);
-            return false;
-        }
-    }
-    
     return true;
 }
 
@@ -679,23 +437,23 @@ function updateBookingSummary() {
     let description = '';
     
     if (couponType === 'in_campus_monthly') {
-        price = pricingData.in_campus_monthly;
+        price = 3900;
         description = 'Monthly (In Campus)';
     } else if (couponType === 'out_campus_monthly') {
-        price = pricingData.out_campus_monthly;
+        price = 1690;
         description = 'Monthly (Out Campus)';
     } else if (couponType === 'single_meal') {
         const mealType = document.querySelector('input[name="coupon_type"]:checked').dataset.meal;
         document.getElementById('mealType').value = mealType;
         
         if (mealType === 'breakfast') {
-            price = pricingData.breakfast;
+            price = 30;
             description = 'Breakfast';
         } else if (mealType === 'lunch') {
-            price = pricingData.lunch;
+            price = <?php echo isSunday() ? 80 : 65; ?>;
             description = 'Lunch';
         } else if (mealType === 'dinner') {
-            price = pricingData.dinner;
+            price = <?php echo isSunday() ? 50 : 65; ?>;
             description = 'Dinner';
         }
     }
@@ -703,36 +461,18 @@ function updateBookingSummary() {
     const totalAmount = price * persons;
     document.getElementById('totalAmountInput').value = totalAmount;
     
-    // Get selected mess name
-    const selectedMess = document.querySelector('input[name="mess_id"]:checked');
-    const messName = selectedMess ? selectedMess.nextElementSibling.querySelector('strong').textContent : '';
-    
     document.getElementById('bookingSummary').innerHTML = `
         <table class="table">
-            <tr><td><strong>Mess:</strong></td><td>${messName}</td></tr>
             <tr><td><strong>User Type:</strong></td><td>${userType}</td></tr>
             <tr><td><strong>Coupon Type:</strong></td><td>${description}</td></tr>
             <tr><td><strong>Persons:</strong></td><td>${persons}</td></tr>
-            <tr><td><strong>Price per Person:</strong></td><td>₹${price.toFixed(0)}</td></tr>
-            <tr><td><strong>Total Amount:</strong></td><td><strong>₹${totalAmount.toFixed(0)}</strong></td></tr>
+            <tr><td><strong>Price per Person:</strong></td><td>₹${price}</td></tr>
+            <tr><td><strong>Total Amount:</strong></td><td><strong>₹${totalAmount}</strong></td></tr>
         </table>
-        ${selectedMessCapacity < 999 ? `
-        <div class="alert alert-info">
-            <i class="fas fa-info-circle"></i>
-            <strong>Capacity Info:</strong> ${selectedMessCapacity - parseInt(persons)} spots will remain after your booking.
-        </div>
-        ` : ''}
     `;
 }
 
 showStep(1);
-
-// Auto-refresh capacity every 30 seconds
-setInterval(function() {
-    if (currentStep === 1) {
-        location.reload();
-    }
-}, 30000);
 </script>
 
 </body>

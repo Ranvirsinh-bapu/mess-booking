@@ -1,0 +1,31 @@
+*{
+ margin: 0;
+ padding: 0;
+ font-family: 'Courier New', Courier, monospace;
+
+}
+.header{
+    background-color: #232121;
+}
+header a img{
+    width: 200px;
+    padding: 20px;
+}
+.mess-booking{
+ width: 100%;
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+    background-image: url('https://paruluniversity.ac.in/mess/img/bg-img.png');
+    background-position: center center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    
+}
+
+   .form-check-input{
+    display: none;
+   }
+   .form-check-label{
+    text-align: center;
+   }

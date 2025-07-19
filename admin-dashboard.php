@@ -35,6 +35,89 @@ $recent_bookings_query = $conn->query("
     LIMIT 5
 ");
 
+// Fetch data for charts
+// Monthly bookings for the current year
+$monthly_bookings_query = $conn->query("
+    SELECT 
+        MONTH(booking_date) as month,
+        COUNT(*) as count
+    FROM bookings 
+    WHERE YEAR(booking_date) = YEAR(CURDATE())
+    GROUP BY MONTH(booking_date)
+    ORDER BY MONTH(booking_date)
+");
+
+$monthly_data = array_fill(1, 12, 0);
+while($row = $monthly_bookings_query->fetch_assoc()) {
+    $monthly_data[$row['month']] = $row['count'];
+}
+
+// Booking status distribution
+$status_query = $conn->query("
+    SELECT booking_status, COUNT(*) as count 
+    FROM bookings 
+    GROUP BY booking_status
+");
+
+$status_data = [];
+$status_labels = [];
+while($row = $status_query->fetch_assoc()) {
+    $status_labels[] = ucfirst($row['booking_status']);
+    $status_data[] = $row['count'];
+}
+
+// Top messes by bookings
+$top_messes_query = $conn->query("
+    SELECT m.name, COUNT(b.id) as booking_count
+    FROM mess m
+    LEFT JOIN bookings b ON m.id = b.mess_id
+    WHERE m.status = 'active'
+    GROUP BY m.id, m.name
+    ORDER BY booking_count DESC
+    LIMIT 5
+");
+
+$mess_names = [];
+$mess_bookings = [];
+while($row = $top_messes_query->fetch_assoc()) {
+    $mess_names[] = $row['name'];
+    $mess_bookings[] = $row['booking_count'];
+}
+
+// Daily bookings for the last 7 days
+$daily_bookings_query = $conn->query("
+    SELECT 
+        DATE(booking_date) as date,
+        COUNT(*) as count
+    FROM bookings 
+    WHERE booking_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+    GROUP BY DATE(booking_date)
+    ORDER BY DATE(booking_date)
+");
+
+$daily_labels = [];
+$daily_data = [];
+while($row = $daily_bookings_query->fetch_assoc()) {
+    $daily_labels[] = date('M d', strtotime($row['date']));
+    $daily_data[] = $row['count'];
+}
+
+// Revenue data
+$revenue_query = $conn->query("
+    SELECT 
+        MONTH(booking_date) as month,
+        SUM(total_amount) as revenue
+    FROM bookings 
+    WHERE YEAR(booking_date) = YEAR(CURDATE())
+    GROUP BY MONTH(booking_date)
+    ORDER BY MONTH(booking_date)
+");
+
+$revenue_data = array_fill(1, 12, 0);
+while($row = $revenue_query->fetch_assoc()) {
+    $revenue_data[$row['month']] = $row['revenue'];
+}
+
 $conn->close();
 ?>
 <!DOCTYPE html>
@@ -45,6 +128,7 @@ $conn->close();
     <title>Admin Dashboard - PU Mess Booking</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
             background-color: #f4f7f6;
@@ -59,8 +143,9 @@ $conn->close();
             top: 0;
             left: 0;
             background-color: #34495e;
-            padding-top: 56px; /* Height of navbar */
+            padding-top: 56px;
             color: white;
+            overflow-y: auto;
         }
         .sidebar .nav-link {
             color: #ecf0f1;
@@ -91,12 +176,42 @@ $conn->close();
         .card-dashboard.bg-success { background-color: #28a745 !important; }
         .card-dashboard.bg-info { background-color: #17a2b8 !important; }
         .card-dashboard.bg-warning { background-color: #ffc107 !important; }
+        
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-bottom: 20px;
+        }
+        
+        .chart-card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+            }
+            .content {
+                margin-left: 0;
+            }
+            .chart-container {
+                height: 300px;
+            }
+        }
     </style>
 </head>
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container-fluid">
             <a class="navbar-brand" href="#">PU Mess Admin</a>
+            <button class="navbar-toggler d-md-none" type="button" id="sidebarToggle">
+                <span class="navbar-toggler-icon"></span>
+            </button>
             <div class="d-flex">
                 <span class="navbar-text text-white me-3">
                     <i class="fas fa-user-shield"></i> Welcome, <?php echo htmlspecialchars($admin_username); ?>
@@ -108,7 +223,7 @@ $conn->close();
         </div>
     </nav>
 
-    <div class="sidebar">
+    <div class="sidebar" id="sidebar">
         <div class="d-flex flex-column p-3">
             <ul class="nav nav-pills flex-column mb-auto">
                 <li class="nav-item">
@@ -122,17 +237,17 @@ $conn->close();
                     </a>
                 </li>
                 <li>
-                    <a href="#" class="nav-link text-white">
+                    <a href="admin-manage-messes.php" class="nav-link text-white">
                         <i class="fas fa-utensils me-2"></i> Manage Messes
                     </a>
                 </li>
                 <li>
-                    <a href="#" class="nav-link text-white">
+                    <a href="admin-manage-pricing.php" class="nav-link text-white">
                         <i class="fas fa-dollar-sign me-2"></i> Manage Pricing
                     </a>
                 </li>
                 <li>
-                    <a href="#" class="nav-link text-white">
+                    <a href="admin-manage-staff.php" class="nav-link text-white">
                         <i class="fas fa-users-cog me-2"></i> Manage Staff
                     </a>
                 </li>
@@ -147,9 +262,10 @@ $conn->close();
 
     <div class="content">
         <h1 class="mb-4">Dashboard Overview</h1>
-
+        
+        <!-- Stats Cards -->
         <div class="row g-4 mb-4">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="card text-white bg-primary card-dashboard">
                     <div class="card-body d-flex align-items-center justify-content-between">
                         <div>
@@ -160,7 +276,7 @@ $conn->close();
                     </div>
                 </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="card text-white bg-success card-dashboard">
                     <div class="card-body d-flex align-items-center justify-content-between">
                         <div>
@@ -171,7 +287,7 @@ $conn->close();
                     </div>
                 </div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="card text-white bg-info card-dashboard">
                     <div class="card-body d-flex align-items-center justify-content-between">
                         <div>
@@ -182,11 +298,62 @@ $conn->close();
                     </div>
                 </div>
             </div>
+            <div class="col-md-3">
+                <div class="card text-white bg-warning card-dashboard">
+                    <div class="card-body d-flex align-items-center justify-content-between">
+                        <div>
+                            <h5 class="card-title">Total Revenue</h5>
+                            <p class="card-text fs-2">₹<?php echo number_format(array_sum($revenue_data), 0); ?></p>
+                        </div>
+                        <i class="fas fa-rupee-sign card-icon"></i>
+                    </div>
+                </div>
+            </div>
         </div>
 
+        <!-- Charts Row -->
+        <div class="row mb-4">
+            <div class="col-lg-8">
+                <div class="chart-card">
+                    <h5 class="mb-3"><i class="fas fa-chart-line me-2"></i>Monthly Bookings & Revenue</h5>
+                    <div class="chart-container">
+                        <canvas id="monthlyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="chart-card">
+                    <h5 class="mb-3"><i class="fas fa-chart-pie me-2"></i>Booking Status</h5>
+                    <div class="chart-container">
+                        <canvas id="statusChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-lg-6">
+                <div class="chart-card">
+                    <h5 class="mb-3"><i class="fas fa-chart-bar me-2"></i>Top Messes by Bookings</h5>
+                    <div class="chart-container">
+                        <canvas id="messChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="chart-card">
+                    <h5 class="mb-3"><i class="fas fa-chart-area me-2"></i>Daily Bookings (Last 7 Days)</h5>
+                    <div class="chart-container">
+                        <canvas id="dailyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Bookings Table -->
         <div class="card card-dashboard">
             <div class="card-header bg-white">
-                <h4 class="mb-0">Recent Bookings</h4>
+                <h4 class="mb-0"><i class="fas fa-clock me-2"></i>Recent Bookings</h4>
             </div>
             <div class="card-body">
                 <?php if ($recent_bookings_query->num_rows > 0): ?>
@@ -214,7 +381,7 @@ $conn->close();
                                 <td><?php echo htmlspecialchars($booking['persons']); ?></td>
                                 <td>₹<?php echo number_format($booking['total_amount'], 2); ?></td>
                                 <td><?php echo date('d M Y', strtotime($booking['booking_date'])); ?></td>
-                                <td><span class="badge bg-<?php echo $booking['booking_status'] == 'active' ? 'success' : 'secondary'; ?>"><?php echo htmlspecialchars(ucfirst($booking['booking_status'])); ?></span></td>
+                                <td><span class="badge bg-<?php echo $booking['booking_status'] == 'active' ? 'primary' : ($booking['booking_status'] == 'completed' ? 'success' : 'secondary'); ?>"><?php echo htmlspecialchars(ucfirst($booking['booking_status'])); ?></span></td>
                             </tr>
                             <?php endwhile; ?>
                         </tbody>
@@ -228,5 +395,175 @@ $conn->close();
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Chart.js configurations
+        Chart.defaults.font.family = 'Arial, sans-serif';
+        Chart.defaults.color = '#666';
+
+        // Monthly Bookings & Revenue Chart
+        const monthlyCtx = document.getElementById('monthlyChart').getContext('2d');
+        new Chart(monthlyCtx, {
+            type: 'line',
+            data: {
+                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                datasets: [{
+                    label: 'Bookings',
+                    data: <?php echo json_encode(array_values($monthly_data)); ?>,
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    tension: 0.4,
+                    yAxisID: 'y'
+                }, {
+                    label: 'Revenue (₹)',
+                    data: <?php echo json_encode(array_values($revenue_data)); ?>,
+                    borderColor: '#28a745',
+                    backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                    tension: 0.4,
+                    yAxisID: 'y1'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                scales: {
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Bookings'
+                        }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Revenue (₹)'
+                        },
+                        grid: {
+                            drawOnChartArea: false,
+                        },
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    }
+                }
+            }
+        });
+
+        // Booking Status Pie Chart
+        const statusCtx = document.getElementById('statusChart').getContext('2d');
+        new Chart(statusCtx, {
+            type: 'doughnut',
+            data: {
+                labels: <?php echo json_encode($status_labels); ?>,
+                datasets: [{
+                    data: <?php echo json_encode($status_data); ?>,
+                    backgroundColor: [
+                        '#667eea',
+                        '#28a745',
+                        '#ffc107',
+                        '#dc3545',
+                        '#17a2b8'
+                    ],
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                    }
+                }
+            }
+        });
+
+        // Top Messes Bar Chart
+        const messCtx = document.getElementById('messChart').getContext('2d');
+        new Chart(messCtx, {
+            type: 'bar',
+            data: {
+                labels: <?php echo json_encode($mess_names); ?>,
+                datasets: [{
+                    label: 'Bookings',
+                    data: <?php echo json_encode($mess_bookings); ?>,
+                    backgroundColor: 'rgba(102, 126, 234, 0.8)',
+                    borderColor: '#667eea',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Number of Bookings'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            }
+        });
+
+        // Daily Bookings Area Chart
+        const dailyCtx = document.getElementById('dailyChart').getContext('2d');
+        new Chart(dailyCtx, {
+            type: 'line',
+            data: {
+                labels: <?php echo json_encode($daily_labels); ?>,
+                datasets: [{
+                    label: 'Daily Bookings',
+                    data: <?php echo json_encode($daily_data); ?>,
+                    borderColor: '#17a2b8',
+                    backgroundColor: 'rgba(23, 162, 184, 0.2)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Bookings'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            }
+        });
+
+        // Mobile sidebar toggle
+        document.getElementById('sidebarToggle')?.addEventListener('click', function() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.style.transform = sidebar.style.transform === 'translateX(0px)' ? 'translateX(-100%)' : 'translateX(0px)';
+        });
+    </script>
 </body>
 </html>

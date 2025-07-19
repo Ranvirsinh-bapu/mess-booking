@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     
     // Validate booking ID and ensure it belongs to the staff's mess and is for today
     $check_stmt = $conn->prepare("
-        SELECT id, booking_status, mess_id, booking_date 
+        SELECT id, booking_status, mess_id, booking_date, meal_type, coupon_type
         FROM bookings 
         WHERE booking_id = ?
     ");
@@ -45,6 +45,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $_SESSION['check_in_message'] = ['type' => 'danger', 'text' => 'Error: This booking is not for your assigned mess.'];
         } elseif ($booking_to_update['booking_date'] != date('Y-m-d')) {
             $_SESSION['check_in_message'] = ['type' => 'danger', 'text' => 'Error: This booking is not valid for today.'];
+        } elseif ($booking_to_update['coupon_type'] === 'single_meal' && !isMealTypeAvailableForMess($staff_mess_id, date('Y-m-d'), $booking_to_update['meal_type'])) {
+             $_SESSION['check_in_message'] = ['type' => 'danger', 'text' => 'Error: The selected meal type (' . ucfirst($booking_to_update['meal_type']) . ') is currently unavailable for your mess.'];
         } elseif ($booking_to_update['booking_status'] === 'completed') {
             $_SESSION['check_in_message'] = ['type' => 'warning', 'text' => 'Warning: This booking has already been checked in.'];
         } else {
@@ -156,6 +158,11 @@ $conn->close();
                 <li class="nav-item">
                     <a href="staff-dashboard.php" class="nav-link active">
                         <i class="fas fa-tachometer-alt me-2"></i> Dashboard
+                    </a>
+                </li>
+                <li>
+                    <a href="staff-manage-meal-availability.php" class="nav-link text-white">
+                        <i class="fas fa-calendar-check me-2"></i> Meal Availability
                     </a>
                 </li>
                 <li>
