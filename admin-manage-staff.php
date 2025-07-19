@@ -8,6 +8,8 @@ if (!isset($_SESSION['admin_id'])) {
     exit;
 }
 
+include 'admin-header.php';
+
 $admin_username = $_SESSION['admin_username'];
 $conn = getDBConnection();
 
@@ -110,107 +112,21 @@ $messes_query = $conn->query("SELECT id, name FROM mess WHERE status = 'active' 
 
 $conn->close();
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Staff - Admin Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        body {
-            background-color: #f4f7f6;
-        }
-        .navbar {
-            background-color: #2c3e50;
-        }
-        .sidebar {
-            height: 100vh;
-            width: 250px;
-            position: fixed;
-            top: 0;
-            left: 0;
-            background-color: #34495e;
-            padding-top: 56px; /* Height of navbar */
-            color: white;
-        }
-        .sidebar .nav-link {
-            color: #ecf0f1;
-            padding: 15px 20px;
-            transition: background-color 0.3s ease;
-        }
-        .sidebar .nav-link:hover, .sidebar .nav-link.active {
-            background-color: #2c3e50;
-            color: white;
-        }
-        .content {
-            margin-left: 250px;
-            padding: 20px;
-        }
-        .card-dashboard {
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-    </style>
-</head>
-<body>
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="#">PU Mess Admin</a>
-            <div class="d-flex">
-                <span class="navbar-text text-white me-3">
-                    <i class="fas fa-user-shield"></i> Welcome, <?php echo htmlspecialchars($admin_username); ?>
-                </span>
-                <a href="logout.php?type=admin" class="btn btn-outline-light btn-sm">
-                    <i class="fas fa-sign-out-alt"></i> Logout
-                </a>
-            </div>
-        </div>
-    </nav>
 
-    <div class="sidebar">
-        <div class="d-flex flex-column p-3">
-            <ul class="nav nav-pills flex-column mb-auto">
-                <li class="nav-item">
-                    <a href="admin-dashboard.php" class="nav-link">
-                        <i class="fas fa-tachometer-alt me-2"></i> Dashboard
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="nav-link text-white">
-                        <i class="fas fa-book me-2"></i> Manage Bookings
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="nav-link text-white">
-                        <i class="fas fa-utensils me-2"></i> Manage Messes
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="nav-link text-white">
-                        <i class="fas fa-dollar-sign me-2"></i> Manage Pricing
-                    </a>
-                </li>
-                <li>
-                    <a href="admin-manage-staff.php" class="nav-link active">
-                        <i class="fas fa-users-cog me-2"></i> Manage Staff
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="nav-link text-white">
-                        <i class="fas fa-cogs me-2"></i> Settings
-                    </a>
-                </li>
-            </ul>
-        </div>
-    </div>
+<style>
+    .card-dashboard {
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+</style>
 
-    <div class="content">
+<div class="container mt-5">
+    <div class="row">
         <h1 class="mb-4">Manage Staff</h1>
 
         <?php if ($message): ?>
-            <div class="alert alert-<?php echo htmlspecialchars($message_type); ?> alert-dismissible fade show" role="alert">
+            <div class="alert alert-<?php echo htmlspecialchars($message_type); ?> alert-dismissible fade show"
+                role="alert">
                 <?php echo htmlspecialchars($message); ?>
                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
             </div>
@@ -240,21 +156,23 @@ $conn->close();
                             <label for="mess_id" class="form-label">Assign Mess (Optional)</label>
                             <select class="form-select" id="mess_id" name="mess_id">
                                 <option value="">-- No Mess Assigned --</option>
-                                <?php 
+                                <?php
                                 // Reset pointer for messes_query
                                 if ($messes_query->num_rows > 0) {
                                     $messes_query->data_seek(0);
-                                    while($mess = $messes_query->fetch_assoc()): 
-                                ?>
-                                    <option value="<?php echo $mess['id']; ?>"><?php echo htmlspecialchars($mess['name']); ?></option>
-                                <?php 
-                                    endwhile; 
+                                    while ($mess = $messes_query->fetch_assoc()):
+                                        ?>
+                                        <option value="<?php echo $mess['id']; ?>">
+                                            <?php echo htmlspecialchars($mess['name']); ?></option>
+                                    <?php
+                                    endwhile;
                                 }
                                 ?>
                             </select>
                         </div>
                         <div class="col-12">
-                            <button type="submit" class="btn btn-primary"><i class="fas fa-plus-circle me-2"></i> Add Staff</button>
+                            <button type="submit" class="btn btn-primary"><i class="fas fa-plus-circle me-2"></i> Add
+                                Staff</button>
                         </div>
                     </div>
                 </form>
@@ -267,46 +185,46 @@ $conn->close();
             </div>
             <div class="card-body">
                 <?php if ($staff_list_query->num_rows > 0): ?>
-                <div class="table-responsive">
-                    <table class="table table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Username</th>
-                                <th>Email</th>
-                                <th>Assigned Mess</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php while($staff = $staff_list_query->fetch_assoc()): ?>
-                            <tr>
-                                <td><?php echo htmlspecialchars($staff['id']); ?></td>
-                                <td><?php echo htmlspecialchars($staff['username']); ?></td>
-                                <td><?php echo htmlspecialchars($staff['email']); ?></td>
-                                <td><?php echo htmlspecialchars($staff['mess_name'] ?? 'N/A'); ?></td>
-                                <td>
-                                    <button type="button" class="btn btn-sm btn-info me-2" 
-                                            data-bs-toggle="modal" data-bs-target="#editStaffModal"
-                                            data-id="<?php echo $staff['id']; ?>"
-                                            data-username="<?php echo htmlspecialchars($staff['username']); ?>"
-                                            data-email="<?php echo htmlspecialchars($staff['email']); ?>"
-                                            data-messid="<?php echo htmlspecialchars($staff['mess_id'] ?? ''); ?>">
-                                        <i class="fas fa-edit"></i> Edit
-                                    </button>
-                                    <form action="admin-manage-staff.php" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this staff member?');">
-                                        <input type="hidden" name="action" value="delete_staff">
-                                        <input type="hidden" name="staff_id" value="<?php echo $staff['id']; ?>">
-                                        <button type="submit" class="btn btn-sm btn-danger">
-                                            <i class="fas fa-trash-alt"></i> Delete
-                                        </button>
-                                    </form>
-                                </td>
-                            </tr>
-                            <?php endwhile; ?>
-                        </tbody>
-                    </table>
-                </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Username</th>
+                                    <th>Email</th>
+                                    <th>Assigned Mess</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php while ($staff = $staff_list_query->fetch_assoc()): ?>
+                                    <tr>
+                                        <td><?php echo htmlspecialchars($staff['id']); ?></td>
+                                        <td><?php echo htmlspecialchars($staff['username']); ?></td>
+                                        <td><?php echo htmlspecialchars($staff['email']); ?></td>
+                                        <td><?php echo htmlspecialchars($staff['mess_name'] ?? 'N/A'); ?></td>
+                                        <td>
+                                            <button type="button" class="btn btn-sm btn-info me-2" data-bs-toggle="modal"
+                                                data-bs-target="#editStaffModal" data-id="<?php echo $staff['id']; ?>"
+                                                data-username="<?php echo htmlspecialchars($staff['username']); ?>"
+                                                data-email="<?php echo htmlspecialchars($staff['email']); ?>"
+                                                data-messid="<?php echo htmlspecialchars($staff['mess_id'] ?? ''); ?>">
+                                                <i class="fas fa-edit"></i> Edit
+                                            </button>
+                                            <form action="admin-manage-staff.php" method="post" class="d-inline"
+                                                onsubmit="return confirm('Are you sure you want to delete this staff member?');">
+                                                <input type="hidden" name="action" value="delete_staff">
+                                                <input type="hidden" name="staff_id" value="<?php echo $staff['id']; ?>">
+                                                <button type="submit" class="btn btn-sm btn-danger">
+                                                    <i class="fas fa-trash-alt"></i> Delete
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                <?php endwhile; ?>
+                            </tbody>
+                        </table>
+                    </div>
                 <?php else: ?>
                     <div class="alert alert-info mb-0">No staff members found.</div>
                 <?php endif; ?>
@@ -335,22 +253,24 @@ $conn->close();
                             <input type="email" class="form-control" id="editEmail" name="email" required>
                         </div>
                         <div class="mb-3">
-                            <label for="editPassword" class="form-label">New Password (leave blank to keep current)</label>
+                            <label for="editPassword" class="form-label">New Password (leave blank to keep
+                                current)</label>
                             <input type="password" class="form-control" id="editPassword" name="password">
                         </div>
                         <div class="mb-3">
                             <label for="editMessId" class="form-label">Assign Mess</label>
                             <select class="form-select" id="editMessId" name="mess_id">
                                 <option value="">-- No Mess Assigned --</option>
-                                <?php 
+                                <?php
                                 // Reset pointer for messes_query
                                 if ($messes_query->num_rows > 0) {
                                     $messes_query->data_seek(0);
-                                    while($mess = $messes_query->fetch_assoc()): 
-                                ?>
-                                    <option value="<?php echo $mess['id']; ?>"><?php echo htmlspecialchars($mess['name']); ?></option>
-                                <?php 
-                                    endwhile; 
+                                    while ($mess = $messes_query->fetch_assoc()):
+                                        ?>
+                                        <option value="<?php echo $mess['id']; ?>">
+                                            <?php echo htmlspecialchars($mess['name']); ?></option>
+                                    <?php
+                                    endwhile;
                                 }
                                 ?>
                             </select>
@@ -364,7 +284,7 @@ $conn->close();
             </div>
         </div>
     </div>
-
+</div> <!-- End row -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Populate edit staff modal
@@ -387,5 +307,3 @@ $conn->close();
             modalMessIdSelect.value = messId; // Set the selected option
         });
     </script>
-</body>
-</html>

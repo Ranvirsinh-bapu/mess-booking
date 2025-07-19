@@ -1,6 +1,7 @@
 <?php
 require_once 'config.php';
 
+// Check if booking ID is provided
 if (!isset($_GET['booking_id'])) {
     header('Location: index.php');
     exit;
@@ -24,254 +25,288 @@ if (!$booking) {
     die('Booking not found');
 }
 
-// Update ticket downloaded status
-$update_download = $conn->prepare("UPDATE bookings SET ticket_downloaded = TRUE WHERE booking_id = ?");
-$update_download->bind_param("s", $booking_id);
-$update_download->execute();
-
-// Generate HTML content for the ticket
-$html_content = generateTicketHTML($booking);
-
-// Set headers for HTML download (not PDF)
-header('Content-Type: text/html; charset=utf-8');
-header('Content-Disposition: attachment; filename="mess_ticket_' . $booking_id . '.html"');
-
-echo $html_content;
-
-function generateTicketHTML($booking)
-{
-    $coupon_type_display = '';
-    if ($booking['coupon_type'] === 'in_campus_monthly') {
-        $coupon_type_display = 'In Campus Monthly (All meals)';
-    } elseif ($booking['coupon_type'] === 'out_campus_monthly') {
-        $coupon_type_display = 'Out Campus Monthly (Lunch only)';
-    } else {
-        $coupon_type_display = ucfirst($booking['meal_type']) . ' - Single Meal';
+// Format the coupon type for display
+function formatCouponType($coupon_type, $meal_type = '') {
+    switch($coupon_type) {
+        case 'in_campus_monthly':
+            return 'Monthly (In Campus)';
+        case 'out_campus_monthly':
+            return 'Monthly (Out Campus)';
+        case 'breakfast':
+        case 'lunch':
+        case 'dinner':
+            return ucfirst($coupon_type);
+        case 'single_meal':
+            return ucfirst($meal_type);
+        case 'full_day':
+            return 'Full Day';
+        default:
+            return ucfirst(str_replace('_', ' ', $coupon_type));
     }
-
-    return '
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mess Ticket - ' . htmlspecialchars($booking['booking_id']) . '</title>
+    <title>Download Ticket - <?php echo htmlspecialchars($booking['booking_id']); ?></title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            margin: 0; 
-            padding: 20px; 
-            background-color: #f5f5f5;
-        }
-        .ticket { 
-            background: white;
-            border: 3px solid #2c3e50; 
-            padding: 30px; 
-            max-width: 700px; 
-            margin: 0 auto; 
-            box-shadow: 0 0 20px rgba(0,0,0,0.1);
-            border-radius: 10px;
-        }
-        .header { 
-            text-align: center; 
-            border-bottom: 2px solid #34495e; 
-            padding-bottom: 20px; 
-            margin-bottom: 30px; 
-        }
-        .logo { 
-            font-size: 28px; 
-            font-weight: bold; 
-            color: #2c3e50;
-            margin-bottom: 5px;
-        }
-        .university { 
-            font-size: 18px; 
-            color: #7f8c8d; 
-        }
-        .details { 
-            margin: 20px 0; 
-        }
-        .details table { 
-            width: 100%; 
-            border-collapse: collapse; 
-        }
-        .details td { 
-            padding: 12px 8px; 
-            border-bottom: 1px dotted #bdc3c7; 
-            vertical-align: top;
-        }
-        .details td:first-child {
-            font-weight: bold;
-            color: #2c3e50;
-            width: 40%;
-        }
-        .details td:last-child {
-            color: #34495e;
-        }
-        .qr-section { 
-            text-align: center; 
-            margin: 30px 0; 
-        }
-        .qr-code { 
-            border: 2px solid #34495e; 
-            width: 120px; 
-            height: 120px; 
-            margin: 0 auto; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            background-color: #ecf0f1;
-            border-radius: 8px;
-        }
-        .important { 
-            background-color: #fff3cd; 
-            border: 2px solid #ffc107; 
-            padding: 20px; 
-            margin: 25px 0; 
-            border-radius: 8px;
-        }
-        .important h4 {
-            color: #856404;
-            margin-top: 0;
-        }
-        .important ul {
-            margin: 10px 0;
-            padding-left: 25px;
-        }
-        .important li {
-            margin: 8px 0;
-            color: #856404;
-        }
-        .footer { 
-            text-align: center; 
-            padding: 20px 0; 
-            border-top: 2px solid #34495e; 
-            margin-top: 30px;
-            color: #7f8c8d;
-        }
-        .footer p {
-            margin: 5px 0;
-        }
-        .amount {
-            font-size: 18px;
-            font-weight: bold;
-            color: #27ae60;
-        }
-        .booking-id {
-            font-size: 20px;
-            font-weight: bold;
-            color: #e74c3c;
-            background-color: #fdf2f2;
-            padding: 8px 15px;
-            border-radius: 5px;
-            display: inline-block;
-        }
         @media print {
-            body { background-color: white; }
-            .ticket { box-shadow: none; }
+            .no-print { display: none !important; }
+            body { margin: 0; padding: 20px; }
+            .ticket-container { box-shadow: none !important; border: 2px solid #000 !important; }
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px 0;
+        }
+        
+        .ticket-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .ticket-header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .ticket-body {
+            padding: 30px;
+        }
+        
+        .qr-section {
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+        
+        .detail-label {
+            font-weight: 600;
+            color: #666;
+        }
+        
+        .detail-value {
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .total-amount {
+            background: linear-gradient(135deg, #56ab2f, #a8e6cf);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .btn-custom {
+            border-radius: 25px;
+            padding: 12px 30px;
+            font-weight: 600;
+            margin: 5px;
+            transition: all 0.3s ease;
+        }
+        
+        .instructions {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
         }
     </style>
 </head>
 <body>
-    <div class="ticket">
-        <div class="header">
-            <div class="logo">🍽️ PU MESS COUPON TICKET</div>
-            <div class="university">Parul University</div>
-            <div style="margin-top: 15px;">
-                <span class="booking-id">' . htmlspecialchars($booking['booking_id']) . '</span>
+    <div class="container">
+        <div class="ticket-container">
+            <!-- Ticket Header -->
+            <div class="ticket-header">
+                <h2><i class="fas fa-utensils me-2"></i>PU Mess Booking Ticket</h2>
+                <p class="mb-0">Digital Coupon</p>
             </div>
-        </div>
-        
-        <div class="details">
-            <table>
-                <tr>
-                    <td>Customer Name:</td>
-                    <td>' . htmlspecialchars($booking['user_name']) . '</td>
-                </tr>
-                <tr>
-                    <td>User Type:</td>
-                    <td>' . ucfirst($booking['user_type']) . '</td>
-                </tr>
-                <tr>
-                    <td>Mess Name:</td>
-                    <td>' . htmlspecialchars($booking['mess_name']) . '</td>
-                </tr>
-                <tr>
-                    <td>Location:</td>
-                    <td>' . htmlspecialchars($booking['mess_location']) . '</td>
-                </tr>
-                <tr>
-                    <td>Contact:</td>
-                    <td>' . htmlspecialchars($booking['mess_contact']) . '</td>
-                </tr>
-                <tr>
-                    <td>Coupon Type:</td>
-                    <td>' . $coupon_type_display . '</td>
-                </tr>
-                <tr>
-                    <td>Number of Persons:</td>
-                    <td>' . $booking['persons'] . '</td>
-                </tr>
-                <tr>
-                    <td>Valid Date:</td>
-                    <td>' . date('d-m-Y', strtotime($booking['booking_date'])) . '</td>
-                </tr>
-                <tr>
-                    <td>Amount Paid:</td>
-                    <td><span class="amount">₹' . number_format($booking['total_amount'], 2) . '</span></td>
-                </tr>
-                <tr>
-                    <td>Booking Time:</td>
-                    <td>' . date('d-m-Y H:i:s', strtotime($booking['created_at'])) . '</td>
-                </tr>
-            </table>
-        </div>
-        
-        <div class="qr-section">
-            <div class="qr-section">
-    <h5>Your QR Code Ticket:</h5>
-    <div class="qr-code">
-        <img src="generate_qr.php?booking_id=' . htmlspecialchars($booking['booking_id']) . '" alt="QR Code" />
-    </div>
-    <p style="margin-top: 10px; color: #7f8c8d; font-size: 14px;">Scan this code at the mess counter</p>
-</div>
-
-            <p style="margin-top: 10px; color: #7f8c8d; font-size: 14px;">Scan this code at the mess counter</p>
-        </div>
-        
-        <div class="important">
-            <h4>📋 IMPORTANT INSTRUCTIONS:</h4>
-            <ul>
-                <li><strong>Non-refundable:</strong> This booking cannot be cancelled or refunded</li>
-                <li><strong>Non-transferable:</strong> This ticket cannot be transferred to another person</li>
-                <li><strong>Show ticket:</strong> Present this ticket at the mess counter before eating</li>
-                <li><strong>Valid date:</strong> This ticket is only valid for the specified date</li>
-                <li><strong>Timing:</strong> Please arrive during the specified meal timings</li>
-                <li><strong>Keep safe:</strong> Keep this ticket until you finish your meal</li>
-            </ul>
-        </div>
-        
-        <div class="footer">
-            <p><strong>Thank you for choosing PU Mess Services!</strong></p>
-            <p>📧 Email: support@pu.edu | 📞 Phone: ' . htmlspecialchars($booking['mess_contact']) . '</p>
-            <p style="font-size: 12px; margin-top: 15px;">
-                This is a computer-generated ticket. No signature required.<br>
-                Generated on: ' . date('d-m-Y H:i:s') . '
-            </p>
+            
+            <!-- Ticket Body -->
+            <div class="ticket-body">
+                <!-- QR Code Section -->
+                <div class="qr-section">
+                    <h5 class="mb-3">Scan QR Code at Mess Counter</h5>
+                    <img src="generate_qr.php?booking_id=<?php echo htmlspecialchars($booking['booking_id']); ?>" 
+                         alt="QR Code" style="width: 200px; height: 200px;" />
+                    <p class="text-muted mt-2">Show this code for quick check-in</p>
+                </div>
+                
+                <!-- Booking Details -->
+                <div class="booking-details">
+                    <h5 class="mb-3 text-center">Booking Information</h5>
+                    
+                    <div class="detail-row">
+                        <span class="detail-label">Booking ID:</span>
+                        <span class="detail-value"><strong><?php echo htmlspecialchars($booking['booking_id']); ?></strong></span>
+                    </div>
+                    
+                    <div class="detail-row">
+                        <span class="detail-label">Customer Name:</span>
+                        <span class="detail-value"><?php echo htmlspecialchars($booking['user_name']); ?></span>
+                    </div>
+                    
+                    <div class="detail-row">
+                        <span class="detail-label">Email:</span>
+                        <span class="detail-value"><?php echo htmlspecialchars($booking['user_email']); ?></span>
+                    </div>
+                    
+                    <div class="detail-row">
+                        <span class="detail-label">Phone:</span>
+                        <span class="detail-value"><?php echo htmlspecialchars($booking['user_phone']); ?></span>
+                    </div>
+                    
+                    <div class="detail-row">
+                        <span class="detail-label">User Type:</span>
+                        <span class="detail-value"><?php echo htmlspecialchars(ucfirst($booking['user_type'])); ?></span>
+                    </div>
+                    
+                    <div class="detail-row">
+                        <span class="detail-label">Mess:</span>
+                        <span class="detail-value"><?php echo htmlspecialchars($booking['mess_name']); ?></span>
+                    </div>
+                    
+                    <div class="detail-row">
+                        <span class="detail-label">Location:</span>
+                        <span class="detail-value"><?php echo htmlspecialchars($booking['mess_location']); ?></span>
+                    </div>
+                    
+                    <div class="detail-row">
+                        <span class="detail-label">Contact:</span>
+                        <span class="detail-value"><?php echo htmlspecialchars($booking['mess_contact']); ?></span>
+                    </div>
+                    
+                    <div class="detail-row">
+                        <span class="detail-label">Coupon Type:</span>
+                        <span class="detail-value"><?php echo formatCouponType($booking['coupon_type'], $booking['meal_type']); ?></span>
+                    </div>
+                    
+                    <div class="detail-row">
+                        <span class="detail-label">Number of Persons:</span>
+                        <span class="detail-value"><strong><?php echo htmlspecialchars($booking['persons']); ?></strong></span>
+                    </div>
+                    
+                    <div class="detail-row">
+                        <span class="detail-label">Booking Date:</span>
+                        <span class="detail-value"><?php echo date('l, F j, Y', strtotime($booking['booking_date'])); ?></span>
+                    </div>
+                    
+                    <div class="detail-row">
+                        <span class="detail-label">Booked At:</span>
+                        <span class="detail-value"><?php echo date('M j, Y g:i A', strtotime($booking['created_at'])); ?></span>
+                    </div>
+                    
+                    <div class="detail-row">
+                        <span class="detail-label">Status:</span>
+                        <span class="detail-value">
+                            <span class="badge bg-<?php echo $booking['booking_status'] == 'active' ? 'primary' : ($booking['booking_status'] == 'completed' ? 'success' : 'secondary'); ?>">
+                                <?php echo htmlspecialchars(ucfirst($booking['booking_status'])); ?>
+                            </span>
+                        </span>
+                    </div>
+                </div>
+                
+                <!-- Total Amount -->
+                <div class="total-amount">
+                    <h4 class="mb-0">
+                        <i class="fas fa-rupee-sign me-2"></i>
+                        Total Amount: ₹<?php echo number_format($booking['total_amount'], 2); ?>
+                    </h4>
+                </div>
+                
+                <!-- Instructions -->
+                <div class="instructions">
+                    <h6><i class="fas fa-info-circle me-2"></i>Instructions:</h6>
+                    <ul class="mb-0">
+                        <li>Show this ticket (QR code) at the mess counter</li>
+                        <li>Valid only for the booked date and meal</li>
+                        <li>Non-refundable and non-transferable</li>
+                        <li>Keep this ticket until you use it</li>
+                    </ul>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div class="text-center mt-4 no-print">
+                    <button onclick="window.print()" class="btn btn-primary btn-custom">
+                        <i class="fas fa-print me-2"></i>Print Ticket
+                    </button>
+                    <a href="booking-success.php?booking_id=<?php echo htmlspecialchars($booking['booking_id']); ?>" 
+                       class="btn btn-secondary btn-custom">
+                        <i class="fas fa-arrow-left me-2"></i>Back to Booking
+                    </a>
+                    <a href="index.php" class="btn btn-success btn-custom">
+                        <i class="fas fa-home me-2"></i>New Booking
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
     
     <script>
-        // Auto-print when page loads
-        window.onload = function() {
-            setTimeout(function() {
+        // Auto-print functionality (optional)
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('auto_print') === '1') {
+            setTimeout(() => {
                 window.print();
-            }, 500);
-        };
+            }, 1000);
+        }
+        
+        // Add print styles dynamically
+        const printStyles = `
+            @media print {
+                body { margin: 0; padding: 10px; background: white !important; }
+                .ticket-container { 
+                    box-shadow: none !important; 
+                    border: 2px solid #000 !important;
+                    page-break-inside: avoid;
+                }
+                .no-print { display: none !important; }
+                .ticket-header { 
+                    background: #333 !important; 
+                    -webkit-print-color-adjust: exact;
+                    color-adjust: exact;
+                }
+                .total-amount {
+                    background: #666 !important;
+                    -webkit-print-color-adjust: exact;
+                    color-adjust: exact;
+                }
+            }
+        `;
+        
+        const styleSheet = document.createElement('style');
+        styleSheet.textContent = printStyles;
+        document.head.appendChild(styleSheet);
     </script>
 </body>
-</html>';
-}
+</html>
 
-$conn->close();
-?>
+<?php $conn->close(); ?>

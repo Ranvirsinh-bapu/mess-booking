@@ -8,6 +8,7 @@ if (!isset($_SESSION['admin_id'])) {
     exit;
 }
 
+include('admin-header.php');
 $admin_username = $_SESSION['admin_username'];
 $conn = getDBConnection();
 
@@ -84,103 +85,17 @@ $mess_list_query = $conn->query("SELECT * FROM mess ORDER BY name");
 
 $conn->close();
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Messes - Admin Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
-        body {
-            background-color: #f4f7f6;
-        }
-        .navbar {
-            background-color: #2c3e50;
-        }
-        .sidebar {
-            height: 100vh;
-            width: 250px;
-            position: fixed;
-            top: 0;
-            left: 0;
-            background-color: #34495e;
-            padding-top: 56px; /* Height of navbar */
-            color: white;
-        }
-        .sidebar .nav-link {
-            color: #ecf0f1;
-            padding: 15px 20px;
-            transition: background-color 0.3s ease;
-        }
-        .sidebar .nav-link:hover, .sidebar .nav-link.active {
-            background-color: #2c3e50;
-            color: white;
-        }
-        .content {
-            margin-left: 250px;
-            padding: 20px;
-        }
+       
         .card-dashboard {
             border-radius: 10px;
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
     </style>
-</head>
-<body>
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="#">PU Mess Admin</a>
-            <div class="d-flex">
-                <span class="navbar-text text-white me-3">
-                    <i class="fas fa-user-shield"></i> Welcome, <?php echo htmlspecialchars($admin_username); ?>
-                </span>
-                <a href="logout.php?type=admin" class="btn btn-outline-light btn-sm">
-                    <i class="fas fa-sign-out-alt"></i> Logout
-                </a>
-            </div>
-        </div>
-    </nav>
 
-    <div class="sidebar">
-        <div class="d-flex flex-column p-3">
-            <ul class="nav nav-pills flex-column mb-auto">
-                <li class="nav-item">
-                    <a href="admin-dashboard.php" class="nav-link">
-                        <i class="fas fa-tachometer-alt me-2"></i> Dashboard
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="nav-link text-white">
-                        <i class="fas fa-book me-2"></i> Manage Bookings
-                    </a>
-                </li>
-                <li>
-                    <a href="admin-manage-messes.php" class="nav-link active">
-                        <i class="fas fa-utensils me-2"></i> Manage Messes
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="nav-link text-white">
-                        <i class="fas fa-dollar-sign me-2"></i> Manage Pricing
-                    </a>
-                </li>
-                <li>
-                    <a href="admin-manage-staff.php" class="nav-link text-white">
-                        <i class="fas fa-users-cog me-2"></i> Manage Staff
-                    </a>
-                </li>
-                <li>
-                    <a href="#" class="nav-link text-white">
-                        <i class="fas fa-cogs me-2"></i> Settings
-                    </a>
-                </li>
-            </ul>
-        </div>
-    </div>
 
-    <div class="content">
+<div class="container mt-5">
+    <div class="row">
         <h1 class="mb-4">Manage Messes</h1>
 
         <?php if ($message): ?>
@@ -358,6 +273,7 @@ $conn->close();
             </div>
         </div>
     </div>
+</div> <!-- End container -->
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
@@ -390,5 +306,6 @@ $conn->close();
             modalCapacityEnabledCheckbox.checked = (capacityEnabled === '1');
         });
     </script>
-</body>
-</html>
+<?php
+require_once 'footer.php';
+?>

@@ -1,4 +1,5 @@
 <?php
+session_start();
 $page_title = "Daily Report";
 $current_page = "daily_report";
 require_once 'staff-header.php';
